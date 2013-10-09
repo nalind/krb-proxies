@@ -31,25 +31,51 @@
 import base64
 import os
 import socket
+from pyasn1.type import univ, char, namedtype, tag
+from pyasn1.codec.ber import encoder, decoder
 
-kdcAddr = ("ipaserv.httpkerb.net", 88)
+kdcAddr = ("localhost", 88)
+
+class proxy_message_kerb_message(univ.OctetString):
+  tagSet = univ.OctetString.tagSet.tagExplicitly(
+       tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
+  )
+class proxy_message_target_domain(char.GeneralString):
+  tagSet = char.GeneralString.tagSet.tagExplicitly(
+       tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
+  )
+class proxy_message_dclocate_hint(univ.Integer):
+  tagSet = univ.Integer.tagSet.tagExplicitly(
+       tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
+  )
+class proxy_message(univ.Sequence):
+  componentType = namedtype.NamedTypes(
+    namedtype.NamedType('message', proxy_message_kerb_message()),
+    namedtype.OptionalNamedType('realm', proxy_message_target_domain()),
+    namedtype.OptionalNamedType('flags', proxy_message_dclocate_hint())
+  )
 
 def application(env, start_response):
   method = env["REQUEST_METHOD"].upper()
-  if method == "POST":
-    req64 = env["wsgi.input"].read()
-    req = base64.b64decode(req64)
-    pass
-  else:
-    start_response("402 D:", [("Content-type", "text/plain")])
+  if method != "POST":
+    start_response("405 Method Not Allowed", [("Content-Type", "text/plain"),
+                                              ("Allow", "POST")])
     return ["I don't know what that is!\r\nDumping env:\r\n%s\r\n" % str(env)]
+
+  (req,err) = decoder.decode(env["wsgi.input"].read(), asn1Spec=proxy_message())
+  if err != '':
+    start_response("400 Bad Request", [("Content-Type", "text/plain")])
+    return ["There was an error parsing the request.\r\n"]
 
   kdc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   kdc.connect(kdcAddr)
-  kdc.sendall(req)
-  reply = kdc.recv(2048)
+  kdc.sendall(req.getComponentByName('message').asOctets())
+  reply = kdc.recv(1048576)
   kdc.close()
 
-  reply64 = base64.b64encode(reply)
-  start_response("200 OK", [("Content-type", "application/kerberos")])
-  return [reply64]
+  rep = proxy_message()
+  rep.setComponentByName('message',reply)
+  encoded_rep = encoder.encode(rep)
+  start_response("200 OK", [("Content-Type", "application/kerberos"),
+                            ("Content-Length", str(len(encoded_rep)))])
+  return [encoded_rep]
