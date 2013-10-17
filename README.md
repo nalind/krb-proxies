@@ -5,10 +5,9 @@ traffic.  These are segregated currently into two parts:
 
 ## server-side ##
 
-This contains the (almost identical) server-side proxies that turn HTTP
-traffic into Kerberos traffic.  **kinit** performs this transformation for
-port 88, and **kpasswd** for port 464.  They are written as
-[Python WSGI](http://www.python.org/dev/peps/pep-0333/) programs, suitable for
+This contains the server-side proxy that turns HTTP traffic into Kerberos and
+kpasswd traffic.  It is written as a
+[Python WSGI](http://www.python.org/dev/peps/pep-0333/) program, suitable for
 use with HTTPS-equipped Apache using mod_wsgi (or theoretically any other web
 server that supports WSGI).
 
