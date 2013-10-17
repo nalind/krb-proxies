@@ -35,24 +35,37 @@ from pyasn1.type import univ, char, namedtype, tag
 from pyasn1.codec.ber import encoder, decoder
 
 kdcAddr = ("localhost", 88)
+kpasswdAddr = ("localhost", 464)
 
 class proxy_message_kerb_message(univ.OctetString):
   tagSet = univ.OctetString.tagSet.tagExplicitly(
-       tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
+    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
   )
 class proxy_message_target_domain(char.GeneralString):
   tagSet = char.GeneralString.tagSet.tagExplicitly(
-       tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
+    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
   )
 class proxy_message_dclocate_hint(univ.Integer):
   tagSet = univ.Integer.tagSet.tagExplicitly(
-       tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
+    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
   )
 class proxy_message(univ.Sequence):
   componentType = namedtype.NamedTypes(
     namedtype.NamedType('message', proxy_message_kerb_message()),
     namedtype.OptionalNamedType('realm', proxy_message_target_domain()),
     namedtype.OptionalNamedType('flags', proxy_message_dclocate_hint())
+  )
+class as_req(univ.Sequence):
+  tagSet = univ.Sequence.tagSet.tagExplicitly(
+    tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
+  )
+class tgs_req(univ.Sequence):
+  tagSet = univ.Sequence.tagSet.tagExplicitly(
+    tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 12)
+  )
+class ap_req(univ.Sequence):
+  tagSet = univ.Sequence.tagSet.tagExplicitly(
+    tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 14)
   )
 
 def application(env, start_response):
@@ -67,11 +80,40 @@ def application(env, start_response):
     start_response("400 Bad Request", [("Content-Type", "text/plain")])
     return ["There was an error parsing the request.\r\n"]
 
-  kdc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  kdc.connect(kdcAddr)
-  kdc.sendall(req.getComponentByName('message').asOctets())
-  reply = kdc.recv(1048576)
-  kdc.close()
+  request = req.getComponentByName('message').asOctets()
+  try:
+    (kdcreq,err) = decoder.decode(request[4:], asn1Spec=as_req())
+    summary = "AS-REQ (%d bytes)" % (len(request) - 4)
+    serverAddr = kdcAddr
+  except:
+    try:
+      (kdcreq,err) = decoder.decode(request[4:], asn1Spec=tgs_req())
+      summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
+      serverAddr = kdcAddr
+    except:
+      try:
+        (kdcreq,err) = decoder.decode(request[10:], asn1Spec=ap_req())
+        summary = "AP-REQ (KPASSWD) (%d bytes)" % (len(request) - 4)
+        serverAddr = kpasswdAddr
+      except:
+        start_response("400 Bad Request", [("Content-Type", "text/plain")])
+        return ["There was an error parsing the request.\r\n"]
+
+  try:
+    server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    server.connect(serverAddr)
+  except:
+    try:
+      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      server.connect(serverAddr)
+    except:
+      start_response("503 Unavailable", [("Content-Type", "text/plain")])
+      print "There was an error connecting to remote server for %s." % summary
+      return ["There was an error connecting to the server for %s." % summary]
+
+  server.sendall(request)
+  reply = server.recv(1048576)
+  server.close()
 
   rep = proxy_message()
   rep.setComponentByName('message',reply)
