@@ -31,6 +31,7 @@
 import base64
 import os
 import socket
+import struct
 from pyasn1.type import univ, char, namedtype, tag
 from pyasn1.codec.ber import encoder, decoder
 
@@ -67,6 +68,10 @@ class ap_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 14)
   )
+class krb_priv(univ.Sequence):
+  tagSet = univ.Sequence.tagSet.tagExplicitly(
+    tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 21)
+  )
 
 def application(env, start_response):
   method = env["REQUEST_METHOD"].upper()
@@ -81,25 +86,80 @@ def application(env, start_response):
     return ["There was an error parsing the request.\r\n"]
 
   request = req.getComponentByName('message').asOctets()
+  realm = req.getComponentByName('realm').asOctets()
+
+  # Check the length of the whole request message.
+  (length,) = struct.unpack("!I", request[0:4])
+  if length + 4 != len(request):
+    start_response("400 Bad Request", [("Content-Type", "text/plain")])
+    return ["There was an error parsing the request length (1).\r\n"]
   try:
+    # See if the tag looks like a TGS request.
     (kdcreq,err) = decoder.decode(request[4:], asn1Spec=tgs_req())
+    # We shouldn't have any data left over.
+    if len(err) > 0:
+      start_response("400 Bad Request", [("Content-Type", "text/plain")])
+      return ["The TGS request was followed by %d bytes of ???.\r\n" %
+              len(err)]
+    # Looks good.
     summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
     serverAddr = kdcAddr
   except:
     try:
+      # See if the tag looks like an AS request.
       (kdcreq,err) = decoder.decode(request[4:], asn1Spec=as_req())
+      # We shouldn't have any data left over.
+      if len(err) > 0:
+        start_response("400 Bad Request", [("Content-Type", "text/plain")])
+        return ["The AS request was followed by %d bytes of ???.\r\n" %
+                len(err)]
+      # Looks good.
       summary = "AS-REQ (%d bytes)" % (len(request) - 4)
       serverAddr = kdcAddr
     except:
       try:
-        (kdcreq,err) = decoder.decode(request[10:], asn1Spec=ap_req())
-        summary = "AP-REQ (KPASSWD) (%d bytes)" % (len(request) - 4)
+        # Check the length count in the password change request, assuming it
+        # actually is a password change request.  It should be the length of
+        # the rest of the request, including itself.
+        (length,) = struct.unpack("!H", request[4:6])
+        if length != len(request) - 4:
+          start_response("400 Bad Request", [("Content-Type", "text/plain")])
+          return ["There was an error parsing the request length (2).\r\n"]
+        # Check the version number in the password change request, assuming it
+        # actually is a password change request.  Officially we support version
+        # 1, but 0xff80 is used for set-password, so try to accept that, too.
+        (version,) = struct.unpack("!H", request[6:8])
+        if version != 0x0001 and version != 0xff80:
+          start_response("400 Bad Request", [("Content-Type", "text/plain")])
+          return ["The password change request(?) is an incorrect version.\r\n"]
+        # Read the length of the AP-REQ part of the change request.  There
+        # should be at least that may bytes following this length, since the
+        # rest of the request is the KRB-PRIV message.
+        (length,) = struct.unpack("!H", request[8:10])
+        if length > len(request) - 10:
+          start_response("400 Bad Request", [("Content-Type", "text/plain")])
+          return ["The password change request(?) appears to be truncated.\r\n"]
+        # See if the tag looks like an AP request, which would look like the
+        # start of a password change request.
+        (apreq,err) = decoder.decode(request[10:length + 10], asn1Spec=ap_req())
+        # The rest of it should be a KRB-PRIV message.
+        (krbpriv,err) = decoder.decode(request[length + 10:],
+                                       asn1Spec=krb_priv())
+        # We shouldn't have any data left over.
+        if len(err) > 0:
+          start_response("400 Bad Request", [("Content-Type", "text/plain")])
+          return ["The password change request was followed by %d bytes of "
+                  "???.\r\n" % len(err)]
+        # Looks good.
+        summary = "KPASSWD (version 0x%04x) (%d bytes)" % (version,
+                                                           len(request) - 4)
         serverAddr = kpasswdAddr
       except:
         start_response("400 Bad Request", [("Content-Type", "text/plain")])
         return ["There was an error parsing the request.\r\n"]
 
   try:
+    #print summary
     server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     server.connect(serverAddr)
   except:
@@ -108,7 +168,7 @@ def application(env, start_response):
       server.connect(serverAddr)
     except:
       start_response("503 Unavailable", [("Content-Type", "text/plain")])
-      print "There was an error connecting to remote server for %s." % summary
+      raise "There was an error connecting to remote server for %s." % summary
       return ["There was an error connecting to the server for %s." % summary]
 
   server.sendall(request)
