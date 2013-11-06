@@ -82,13 +82,13 @@ def application(env, start_response):
 
   request = req.getComponentByName('message').asOctets()
   try:
-    (kdcreq,err) = decoder.decode(request[4:], asn1Spec=as_req())
-    summary = "AS-REQ (%d bytes)" % (len(request) - 4)
+    (kdcreq,err) = decoder.decode(request[4:], asn1Spec=tgs_req())
+    summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
     serverAddr = kdcAddr
   except:
     try:
-      (kdcreq,err) = decoder.decode(request[4:], asn1Spec=tgs_req())
-      summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
+      (kdcreq,err) = decoder.decode(request[4:], asn1Spec=as_req())
+      summary = "AS-REQ (%d bytes)" % (len(request) - 4)
       serverAddr = kdcAddr
     except:
       try:
