@@ -35,9 +35,6 @@ import struct
 from pyasn1.type import univ, char, namedtype, tag
 from pyasn1.codec.ber import encoder, decoder
 
-kdcAddr = ("localhost", 88)
-kpasswdAddr = ("localhost", 464)
-
 class proxy_message_kerb_message(univ.OctetString):
   tagSet = univ.OctetString.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
@@ -73,7 +70,7 @@ class krb_priv(univ.Sequence):
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 21)
   )
 
-def application(env, start_response):
+def proxy(env, locate_kdc, locate_kpasswd, start_response):
   method = env["REQUEST_METHOD"].upper()
   if method != "POST":
     start_response("405 Method Not Allowed", [("Content-Type", "text/plain"),
@@ -103,7 +100,7 @@ def application(env, start_response):
               len(err)]
     # Looks good.
     summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
-    serverAddr = kdcAddr
+    serverAddr = locate_kdc(realm)
   except:
     try:
       # See if the tag looks like an AS request.
@@ -115,7 +112,7 @@ def application(env, start_response):
                 len(err)]
       # Looks good.
       summary = "AS-REQ (%d bytes)" % (len(request) - 4)
-      serverAddr = kdcAddr
+      serverAddr = locate_kdc(realm)
     except:
       try:
         # Check the length count in the password change request, assuming it
@@ -153,7 +150,7 @@ def application(env, start_response):
         # Looks good.
         summary = "KPASSWD (version 0x%04x) (%d bytes)" % (version,
                                                            len(request) - 4)
-        serverAddr = kpasswdAddr
+        serverAddr = locate_kpasswd(realm)
       except:
         start_response("400 Bad Request", [("Content-Type", "text/plain")])
         return ["There was an error parsing the request.\r\n"]
@@ -181,3 +178,12 @@ def application(env, start_response):
   start_response("200 OK", [("Content-Type", "application/kerberos"),
                             ("Content-Length", str(len(encoded_rep)))])
   return [encoded_rep]
+
+
+def application(env, start_response):
+  kdcAddr = ("localhost", 88)
+  kpasswdAddr = ("localhost", 464)
+  return proxy(env,
+               lambda realm: kdcAddr,
+               lambda realm: kpasswdAddr,
+               start_response)
