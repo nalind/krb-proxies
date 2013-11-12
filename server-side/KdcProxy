@@ -34,37 +34,201 @@ import socket
 import struct
 from pyasn1.type import univ, char, namedtype, tag
 from pyasn1.codec.ber import encoder, decoder
+import ctypes
+import dns.rdatatype
+import dns.resolver
+import sys
+
+def default_realm():
+    context = ctypes.c_void_p()
+    try:
+        krb5 = ctypes.CDLL('libkrb5.so.3')
+        if krb5.krb5_init_context(ctypes.byref(context)):
+            return None
+    except:
+        return None
+
+    profile = ctypes.c_void_p()
+    if krb5.krb5_get_profile(context, ctypes.byref(profile)):
+        krb5.krb5_free_context(context)
+        return None
+
+    realm = ctypes.c_char_p()
+    if krb5.profile_get_string(profile, 'libdefaults', 'default_realm', None,
+                               None, ctypes.byref(realm)) or not realm:
+        krb5.krb5_free_context(context)
+        return None
+
+    krb5.krb5_free_context(context)
+    return realm.value
+
+def use_dns_for_kdcs():
+    context = ctypes.c_void_p()
+    try:
+        krb5 = ctypes.CDLL('libkrb5.so.3')
+        if krb5.krb5_init_context(ctypes.byref(context)):
+            return None
+    except:
+        return None
+
+    profile = ctypes.c_void_p()
+    if krb5.krb5_get_profile(context, ctypes.byref(profile)):
+        krb5.krb5_free_context(context)
+        return False
+
+    use_dns = ctypes.c_uint(1)
+    if krb5.profile_get_boolean(profile, 'libdefaults', 'dns_lookup_kdc', None,
+                                use_dns, ctypes.byref(use_dns)):
+        krb5.krb5_free_context(context)
+        return False
+
+    krb5.krb5_free_context(context)
+
+    if use_dns.value:
+        return True
+    return False
+
+def configured_servers(realm, server, port):
+    context = ctypes.c_void_p()
+    try:
+        krb5 = ctypes.CDLL('libkrb5.so.3')
+        if krb5.krb5_init_context(ctypes.byref(context)):
+            return None
+    except:
+        return None
+
+    profile = ctypes.c_void_p()
+    if krb5.krb5_get_profile(context, ctypes.byref(profile)):
+        krb5.krb5_free_context(context)
+        return None
+
+    names = ctypes.c_char_p * 4
+    path = names('realms', realm, server, None)
+    servers = []
+    name = ctypes.c_char_p()
+    value = ctypes.c_char_p()
+
+    iterator = ctypes.c_void_p()
+    if krb5.profile_iterator_create(profile, path, 0, ctypes.byref(iterator)):
+        krb5.krb5_free_context(context)
+        return None
+    while not krb5.profile_iterator(ctypes.byref(iterator),
+                                    ctypes.byref(name),
+                                    ctypes.byref(value)) and value:
+        if name.value == server:
+            if value.value[:8] == "https://":
+                continue
+            if value.value[:7] == "http://":
+                continue
+            host = value.value
+            if host.rfind(':') == -1:
+                # Hostname, no port.
+                hostname = host
+                hostport = port
+            else:
+                # Has a colon in it.
+                if host.rfind(']') == -1:
+                    # Not a bracketed IPv6 address - split on the ':'.
+                    hostname = host[:host.rfind(':')]
+                    hostport = host[host.rfind(':') + 1:]
+                    if not hostport:
+                        hostport = port
+                else:
+                    # Bracketed IPv6 address, maybe with a port.
+                    if host.rfind(']') < host.rfind(':'):
+                        # Includes a port - split on the ':'.
+                        hostname = host[:host.rfind(':')]
+                        hostport = host[host.rfind(':') + 1:]
+                        if not hostport:
+                            hostport = port
+                    else:
+                        # No port, so use the configured port.
+                        hostname = host
+                        hostport = port
+            servers.append((hostname, hostport))
+    krb5.profile_iterator_free(ctypes.byref(iterator))
+
+    krb5.krb5_free_context(context)
+
+    return servers
+
+def dns_published_servers(query):
+    records = []
+    try:
+        answers = dns.resolver.query(query, dns.rdatatype.SRV)
+        # FIXME: pay attention to weighting and priorities, preferably while
+        # still arriving at the same answer every time, for the sake of
+        # clients that are having longer conversations with servers.
+        for answer in answers:
+            host = str(answer.target)
+            if (host[-1] == '.'):
+                host = host[:-1]
+            target = (host, answer.port)
+            records.append(target)
+    except:
+        records = []
+    return records
+
+def locate_kdc(realm):
+    if not realm:
+        return None
+    servers = configured_servers(realm, 'kdc', 88)
+    if not servers and use_dns_for_kdcs():
+        servers = dns_published_servers('_kerberos._tcp.%s' % realm)
+    return servers
+
+def locate_kpasswd(realm):
+    if not realm:
+        return None
+    servers = configured_servers(realm, 'kpasswd_server', 464)
+    if not servers:
+        servers = configured_servers(realm, 'admin_server', 464)
+        tweaked = []
+        for server in servers:
+            (host, port) = server
+            tweaked.append((host, 464))
+        servers = tweaked
+    if not servers and use_dns_for_kdcs():
+        servers = dns_published_servers('_kpasswd._tcp.%s' % realm)
+    return servers
 
 class proxy_message_kerb_message(univ.OctetString):
   tagSet = univ.OctetString.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
   )
+
 class proxy_message_target_domain(char.GeneralString):
   tagSet = char.GeneralString.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
   )
+
 class proxy_message_dclocate_hint(univ.Integer):
   tagSet = univ.Integer.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
   )
+
 class proxy_message(univ.Sequence):
   componentType = namedtype.NamedTypes(
     namedtype.NamedType('message', proxy_message_kerb_message()),
     namedtype.OptionalNamedType('realm', proxy_message_target_domain()),
     namedtype.OptionalNamedType('flags', proxy_message_dclocate_hint())
   )
+
 class as_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
   )
+
 class tgs_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 12)
   )
+
 class ap_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 14)
   )
+
 class krb_priv(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 21)
@@ -99,7 +263,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
       return ["The TGS request was followed by %d bytes of ???.\r\n" %
               len(err)]
     # Looks good.
-    summary = "TGS-REQ (%d bytes)" % (len(request) - 4)
+    summary = "%s TGS-REQ (%d bytes)" % (realm, len(request) - 4)
     serverAddr = locate_kdc(realm)
   except:
     try:
@@ -111,8 +275,8 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         return ["The AS request was followed by %d bytes of ???.\r\n" %
                 len(err)]
       # Looks good.
-      summary = "AS-REQ (%d bytes)" % (len(request) - 4)
-      serverAddr = locate_kdc(realm)
+      summary = "%s AS-REQ (%d bytes)" % (realm, len(request) - 4)
+      serverAddrs = locate_kdc(realm)
     except:
       try:
         # Check the length count in the password change request, assuming it
@@ -148,25 +312,39 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
           return ["The password change request was followed by %d bytes of "
                   "???.\r\n" % len(err)]
         # Looks good.
-        summary = "KPASSWD (version 0x%04x) (%d bytes)" % (version,
-                                                           len(request) - 4)
-        serverAddr = locate_kpasswd(realm)
+        summary = "%s KPASSWD (version 0x%04x) (%d bytes)" % (realm, version,
+                                                              len(request) - 4)
+        serverAddrs = locate_kpasswd(realm)
       except:
         start_response("400 Bad Request", [("Content-Type", "text/plain")])
         return ["There was an error parsing the request.\r\n"]
 
-  try:
-    #print summary
-    server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    server.connect(serverAddr)
-  except:
+  connected = False
+  if not serverAddrs:
+    start_response("503 Unavailable", [("Content-Type", "text/plain")])
+    print "There was an error locating the remote server for %s." % summary
+    return ["There was an error locating the the server for %s." % summary]
+
+  for serverAddr in serverAddrs:
     try:
-      server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
       server.connect(serverAddr)
+      connected = True
+      break
     except:
-      start_response("503 Unavailable", [("Content-Type", "text/plain")])
-      raise "There was an error connecting to remote server for %s." % summary
-      return ["There was an error connecting to the server for %s." % summary]
+      try:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.connect(serverAddr)
+        connected = True
+        break
+      except:
+        continue
+
+  if not connected:
+    start_response("503 Unavailable", [("Content-Type", "text/plain")])
+    print "There was an error connecting to remote server for %s." % summary
+    return ["There was an error connecting to the server for %s." % summary]
+  #print summary
 
   server.sendall(request)
   reply = server.recv(1048576)
@@ -181,9 +359,4 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
 
 
 def application(env, start_response):
-  kdcAddr = ("localhost", 88)
-  kpasswdAddr = ("localhost", 464)
-  return proxy(env,
-               lambda realm: kdcAddr,
-               lambda realm: kpasswdAddr,
-               start_response)
+  return proxy(env, locate_kdc, locate_kpasswd, start_response)
