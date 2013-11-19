@@ -32,7 +32,7 @@ import base64
 import os
 import socket
 import struct
-from pyasn1.type import univ, char, useful, namedtype, tag
+from pyasn1.type import univ, char, namedtype, tag
 from pyasn1.codec.ber import encoder, decoder
 import ctypes
 import dns.rdatatype
@@ -214,185 +214,19 @@ class proxy_message(univ.Sequence):
     namedtype.OptionalNamedType('flags', proxy_message_dclocate_hint())
   )
 
-class kdc_req_pvno(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 1)
-  )
-
-class kdc_req_msg_type(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
-  )
-
-class kdc_req_padata(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 3)
-  )
-
-class kdc_req_body_kdc_options(univ.BitString):
-  tagSet = univ.BitString.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 0)
-  )
-
-class kdc_req_body_cname(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
-  )
-
-class kdc_req_body_realm(char.GeneralString):
-  tagSet = char.GeneralString.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
-  )
-
-class kdc_req_body_sname(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 3)
-  )
-
-class kdc_req_body_from(useful.GeneralizedTime):
-  tagSet = useful.GeneralizedTime.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 4)
-  )
-
-class kdc_req_body_till(useful.GeneralizedTime):
-  tagSet = useful.GeneralizedTime.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 5)
-  )
-
-class kdc_req_body_rtime(useful.GeneralizedTime):
-  tagSet = useful.GeneralizedTime.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 6)
-  )
-
-class kdc_req_body_nonce(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 7)
-  )
-
-class kdc_req_body_etype(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 8)
-  )
-
-class kdc_req_body_addresses(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 9)
-  )
-
-class kdc_req_body_ead(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 10)
-  )
-
-class kdc_req_body_addtl_tix(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 11)
-  )
-
-class kdc_req_req_body(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 4)
-  )
-  componentType = namedtype.NamedTypes(
-    namedtype.NamedType('kdc-options', kdc_req_body_kdc_options()),
-    namedtype.OptionalNamedType('cname', kdc_req_body_cname()),
-    namedtype.NamedType('realm', kdc_req_body_realm()),
-    namedtype.OptionalNamedType('sname', kdc_req_body_sname()),
-    namedtype.OptionalNamedType('from', kdc_req_body_from()),
-    namedtype.NamedType('till', kdc_req_body_till()),
-    namedtype.OptionalNamedType('rtime', kdc_req_body_rtime()),
-    namedtype.NamedType('nonce', kdc_req_body_nonce()),
-    namedtype.NamedType('etype', kdc_req_body_etype()),
-    namedtype.OptionalNamedType('addresses', kdc_req_body_addresses()),
-    namedtype.OptionalNamedType('enc-authorization-data', kdc_req_body_ead()),
-    namedtype.OptionalNamedType('additional-tickets', kdc_req_body_addtl_tix())
-  )
-
 class as_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
-  )
-  componentType = namedtype.NamedTypes(
-    namedtype.NamedType('pvno', kdc_req_pvno()),
-    namedtype.NamedType('msg-type', kdc_req_msg_type()),
-    namedtype.NamedType('padata', kdc_req_padata()),
-    namedtype.NamedType('req-body', kdc_req_req_body())
   )
 
 class tgs_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
     tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 12)
   )
-  componentType = namedtype.NamedTypes(
-    namedtype.NamedType('pvno', kdc_req_pvno()),
-    namedtype.NamedType('msg-type', kdc_req_msg_type()),
-    namedtype.NamedType('padata', kdc_req_padata()),
-    namedtype.NamedType('req-body', kdc_req_req_body())
-  )
-
-class ticket_tkt_vno(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 0)
-  )
-
-class ticket_realm(char.GeneralString):
-  tagSet = char.GeneralString.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 1)
-  )
-
-class ticket_sname(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
-  )
-
-class ticket_enc_part(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 3)
-  )
-
-class ap_req_ticket(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 1)
-  ).tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 3)
-  )
-  componentType = namedtype.NamedTypes(
-    namedtype.NamedType('tkt-vno', ticket_tkt_vno()),
-    namedtype.NamedType('realm', ticket_realm()),
-    namedtype.NamedType('sname', ticket_sname()),
-    namedtype.NamedType('enc-part', ticket_enc_part())
-  )
-
-class ap_req_pvno(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 0)
-  )
-
-class ap_req_msg_type(univ.Integer):
-  tagSet = univ.Integer.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 1)
-  )
-
-class ap_req_ap_options(univ.BitString):
-  tagSet = univ.BitString.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
-  )
-
-class ap_req_authenticator(univ.Sequence):
-  tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 4)
-  )
 
 class ap_req(univ.Sequence):
   tagSet = univ.Sequence.tagSet.tagExplicitly(
-    tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 14)
-  )
-  componentType = namedtype.NamedTypes(
-    namedtype.NamedType('pvno', ap_req_pvno()),
-    namedtype.NamedType('msg-type', ap_req_msg_type()),
-    namedtype.NamedType('ap-options', ap_req_ap_options()),
-    namedtype.NamedType('ticket', ap_req_ticket()),
-    namedtype.NamedType('authenticator', ap_req_authenticator())
+    tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 14)
   )
 
 class krb_priv(univ.Sequence):
@@ -413,12 +247,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
     return ["There was an error parsing the request.\r\n"]
 
   request = req.getComponentByName('message').asOctets()
-  try:
-    realm = req.getComponentByName('realm').asOctets()
-  except:
-    realm = None
-  inner_realm = None
-  serverAddrs = None
+  realm = req.getComponentByName('realm').asOctets()
 
   # Check the length of the whole request message.
   (length,) = struct.unpack("!I", request[0:4])
@@ -435,18 +264,6 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
       print "The TGS request was followed by %d bytes of ???." % len(err)
       return ["The TGS request was followed by %d bytes of ???.\r\n" %
               len(err)]
-    # Dig up the realm name.
-    req_body = kdcreq.getComponentByName('req-body')
-    inner_realm = req_body.getComponentByName('realm')
-    if not realm:
-      realm = inner_realm
-    else:
-      if realm != inner_realm:
-        start_response("400 Bad Request", [("Content-Type", "text/plain")])
-        print "Proxy message realm mismatch ('%s' != '%s')" % (realm,
-                                                               inner_realm)
-        return ["Proxy message realm mismatch ('%s' != '%s')" %
-                (realm, inner_realm)]
     # Looks good.
     summary = "%s TGS-REQ (%d bytes)" % (realm, len(request) - 4)
     serverAddrs = locate_kdc(realm)
@@ -460,18 +277,6 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         print "The AS request was followed by %d bytes of ???." % len(err)
         return ["The AS request was followed by %d bytes of ???.\r\n" %
                 len(err)]
-      # Dig up the realm name.
-      req_body = kdcreq.getComponentByName('req-body')
-      inner_realm = req_body.getComponentByName('realm')
-      if not realm:
-        realm = inner_realm
-      else:
-        if realm != inner_realm:
-          start_response("400 Bad Request", [("Content-Type", "text/plain")])
-          print "Proxy message realm mismatch ('%s' != '%s')" % (realm,
-                                                                 inner_realm)
-          return ["Proxy message realm mismatch ('%s' != '%s')" %
-                  (realm, inner_realm)]
       # Looks good.
       summary = "%s AS-REQ (%d bytes)" % (realm, len(request) - 4)
       serverAddrs = locate_kdc(realm)
@@ -514,18 +319,6 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
                  "???." % len(err))
           return ["The password change request was followed by %d bytes of "
                   "???.\r\n" % len(err)]
-        # Dig up the realm name.
-        ticket = apreq.getComponentByName('ticket')
-        inner_realm = ticket.getComponentByName('realm')
-        if not realm:
-          realm = inner_realm
-        else:
-          if realm != inner_realm:
-            start_response("400 Bad Request", [("Content-Type", "text/plain")])
-            print "Proxy message realm mismatch ('%s' != '%s')" % (realm,
-                                                                   inner_realm)
-            return ["Proxy message realm mismatch ('%s' != '%s')" %
-                    (realm, inner_realm)]
         # Looks good.
         summary = "%s KPASSWD (version 0x%04x) (%d bytes)" % (realm, version,
                                                               len(request) - 4)
