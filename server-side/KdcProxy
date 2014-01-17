@@ -253,7 +253,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
   (length,) = struct.unpack("!I", request[0:4])
   if length + 4 != len(request):
     start_response("400 Bad Request", [("Content-Type", "text/plain")])
-    print "There was an error parsing the request length (1)."
+    print("There was an error parsing the request length (1).")
     return ["There was an error parsing the request length (1).\r\n"]
   try:
     # See if the tag looks like a TGS request.
@@ -261,7 +261,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
     # We shouldn't have any data left over.
     if len(err) > 0:
       start_response("400 Bad Request", [("Content-Type", "text/plain")])
-      print "The TGS request was followed by %d bytes of ???." % len(err)
+      print("The TGS request was followed by %d bytes of ???." % len(err))
       return ["The TGS request was followed by %d bytes of ???.\r\n" %
               len(err)]
     # Looks good.
@@ -274,7 +274,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
       # We shouldn't have any data left over.
       if len(err) > 0:
         start_response("400 Bad Request", [("Content-Type", "text/plain")])
-        print "The AS request was followed by %d bytes of ???." % len(err)
+        print("The AS request was followed by %d bytes of ???." % len(err))
         return ["The AS request was followed by %d bytes of ???.\r\n" %
                 len(err)]
       # Looks good.
@@ -288,7 +288,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         (length,) = struct.unpack("!H", request[4:6])
         if length != len(request) - 4:
           start_response("400 Bad Request", [("Content-Type", "text/plain")])
-          print "There was an error parsing the request length (2)."
+          print("There was an error parsing the request length (2).")
           return ["There was an error parsing the request length (2).\r\n"]
         # Check the version number in the password change request, assuming it
         # actually is a password change request.  Officially we support version
@@ -296,7 +296,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         (version,) = struct.unpack("!H", request[6:8])
         if version != 0x0001 and version != 0xff80:
           start_response("400 Bad Request", [("Content-Type", "text/plain")])
-          print "The password change request(?) is an incorrect version."
+          print("The password change request(?) is an incorrect version.")
           return ["The password change request(?) is an incorrect version.\r\n"]
         # Read the length of the AP-REQ part of the change request.  There
         # should be at least that may bytes following this length, since the
@@ -304,7 +304,7 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         (length,) = struct.unpack("!H", request[8:10])
         if length > len(request) - 10:
           start_response("400 Bad Request", [("Content-Type", "text/plain")])
-          print "The password change request(?) appears to be truncated."
+          print("The password change request(?) appears to be truncated.")
           return ["The password change request(?) appears to be truncated.\r\n"]
         # See if the tag looks like an AP request, which would look like the
         # start of a password change request.
@@ -315,8 +315,8 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         # We shouldn't have any data left over.
         if len(err) > 0:
           start_response("400 Bad Request", [("Content-Type", "text/plain")])
-          print ("The password change request was followed by %d bytes of "
-                 "???." % len(err))
+          print("The password change request was followed by %d bytes of "
+                "???." % len(err))
           return ["The password change request was followed by %d bytes of "
                   "???.\r\n" % len(err)]
         # Looks good.
@@ -325,13 +325,13 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
         serverAddrs = locate_kpasswd(realm)
       except:
         start_response("400 Bad Request", [("Content-Type", "text/plain")])
-        print "There was an error parsing the request."
+        print("There was an error parsing the request.")
         return ["There was an error parsing the request.\r\n"]
 
   connected = False
   if not serverAddrs:
     start_response("503 Unavailable", [("Content-Type", "text/plain")])
-    print "There was an error locating the remote server for %s." % summary
+    print("There was an error locating the remote server for %s." % summary)
     return ["There was an error locating the the server for %s." % summary]
 
   for serverAddr in serverAddrs:
@@ -351,9 +351,9 @@ def proxy(env, locate_kdc, locate_kpasswd, start_response):
 
   if not connected:
     start_response("503 Unavailable", [("Content-Type", "text/plain")])
-    print "There was an error connecting to remote server for %s." % summary
+    print("There was an error connecting to remote server for %s." % summary)
     return ["There was an error connecting to the server for %s." % summary]
-  #print summary
+  #print(summary)
 
   server.sendall(request)
   reply = server.recv(1048576)
